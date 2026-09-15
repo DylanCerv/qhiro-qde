@@ -58,7 +58,7 @@ export const capexConcepts = [
 
 export function estimateQuickCapex({ usefulAreaHa, ra, fo, costs }) {
   const spacing = 2 * ra * (1 - fo);
-  const baseNodes = Math.max(4, Math.ceil((usefulAreaHa * 10_000) / (Math.PI * ra * ra)));
+  const baseNodes = Math.max(1, Math.ceil((usefulAreaHa * 10_000) / (Math.PI * ra * ra * 0.85)));
   const cabecillas = Math.max(1, Math.round(baseNodes * 0.15));
   const peones = Math.max(0, baseNodes - cabecillas);
   const qdnCount = 1;
