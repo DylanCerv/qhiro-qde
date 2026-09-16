@@ -52,6 +52,23 @@ export default function QuickReference() {
 
       <section className="card card--flat" style={{ marginBottom: '1.25rem' }}>
         <div className="card__label">
+          <span className="material-symbols-outlined">verified</span>
+          Regla de ingeniería QDE
+        </div>
+        <p className="result-summary">
+          La cobertura de aspersión es una restricción dura: Cabecillas y Peones son Centinelas y
+          deben cubrir el polígono útil, incluidos bordes, esquinas y puntos críticos. El Nido
+          alimenta y autoriza; el QDN solo refuerza la red y nunca es un segundo cerebro.
+        </p>
+        <div className="stats-row" style={{ marginTop: '1rem', marginBottom: 0 }}>
+          <div className="stat-card"><div className="stat-card__label">Primero</div><div className="stat-card__value" style={{ fontSize: '1rem' }}>Factibilidad</div></div>
+          <div className="stat-card"><div className="stat-card__label">Después</div><div className="stat-card__value" style={{ fontSize: '1rem' }}>Menor CAPEX</div></div>
+          <div className="stat-card"><div className="stat-card__label">Nunca aceptar</div><div className="stat-card__value" style={{ fontSize: '1rem' }}>Huecos críticos</div></div>
+        </div>
+      </section>
+
+      <section className="card card--flat" style={{ marginBottom: '1.25rem' }}>
+        <div className="card__label">
           <span className="material-symbols-outlined">devices</span>
           Equipos del sistema
         </div>

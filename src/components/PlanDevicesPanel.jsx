@@ -66,21 +66,42 @@ export default function PlanDevicesPanel({
         )}
       </p>
 
-      <EnergyConfigPanel
-        inputs={inputs}
-        onChange={onChange}
-        readOnly={!deviceEditEnabled}
-        embedded
-      />
+      {output?.budgetBreakdown ? (
+        <div className="plan-budget-summary">
+          <span className="material-symbols-outlined">account_balance_wallet</span>
+          <div>
+            <span>CAPEX general calculado</span>
+            <strong>US${Number(output.budgetBreakdown.totalUsd ?? 0).toLocaleString()}</strong>
+            <small>
+              US${Number(output.budgetBreakdown.costPerUsefulHaUsd ?? 0).toLocaleString()}/ha útil
+            </small>
+          </div>
+          <span className="badge badge-selected">Plano calculado</span>
+        </div>
+      ) : null}
 
-      <BudgetPanel
-        inputs={inputs}
-        output={output}
-        onChangeCosts={(costs) => onChange({ ...inputs, costs })}
-        onRestoreBaseCosts={deviceEditEnabled ? onRestoreBase : undefined}
-        readOnly={!deviceEditEnabled}
-        embedded
-      />
+      <details className="plan-devices-accordion" open={deviceEditEnabled || !output?.budgetBreakdown}>
+        <summary>
+          <span className="material-symbols-outlined">tune</span>
+          Parámetros, capacidades y precios del plano
+          <span className="material-symbols-outlined plan-devices-accordion__chevron">expand_more</span>
+        </summary>
+        <EnergyConfigPanel
+          inputs={inputs}
+          onChange={onChange}
+          readOnly={!deviceEditEnabled}
+          embedded
+        />
+
+        <BudgetPanel
+          inputs={inputs}
+          output={output}
+          onChangeCosts={(costs) => onChange({ ...inputs, costs })}
+          onRestoreBaseCosts={deviceEditEnabled ? onRestoreBase : undefined}
+          readOnly={!deviceEditEnabled}
+          embedded
+        />
+      </details>
     </section>
   );
 }

@@ -1,7 +1,9 @@
 import { qdeGlossary } from '../data/glossary.js';
 import FieldHint from './FieldHint.jsx';
 
-export default function InputsForm({ inputs, onChange, terrainFromMap = false }) {
+export default function InputsForm({ inputs, onChange, terrainFromMap = false, invalidFields = [] }) {
+  const numericValue = (value) => (value === '' ? '' : Number(value));
+  const fieldClass = (field) => `field${invalidFields.includes(field) ? ' field--invalid' : ''}`;
   const update = (section, key, value) => {
     onChange({
       ...inputs,
@@ -12,8 +14,8 @@ export default function InputsForm({ inputs, onChange, terrainFromMap = false })
   if (!inputs) return null;
 
   return (
-    <div className="form-grid form-grid--2">
-      <details className="glossary-box" style={{ gridColumn: '1 / -1' }} open>
+    <div className="form-grid form-grid--6">
+      <details className="glossary-box" style={{ gridColumn: '1 / -1' }}>
         <summary>Glosario rápido — qué significa cada dato</summary>
         <p>
           Pasa el cursor sobre <strong>?</strong> en cada campo para ver la explicación. Los
@@ -21,61 +23,61 @@ export default function InputsForm({ inputs, onChange, terrainFromMap = false })
         </p>
       </details>
 
-      <label className="field" style={{ gridColumn: '1 / -1' }}>
+      <label className={fieldClass('terrain.name')} style={{ gridColumn: '1 / -1' }}>
         <FieldHint term={qdeGlossary.terrainName} />
         <input
           value={inputs.terrain.name}
           onChange={(e) => update('terrain', 'name', e.target.value)}
         />
       </label>
-      <label className="field">
+      <label className={fieldClass('terrain.grossAreaHa')}>
         <FieldHint term={qdeGlossary.grossAreaHa} />
         <input
           type="number"
           step="0.01"
           value={inputs.terrain.grossAreaHa}
-          onChange={(e) => update('terrain', 'grossAreaHa', Number(e.target.value))}
+          onChange={(e) => update('terrain', 'grossAreaHa', numericValue(e.target.value))}
         />
         {terrainFromMap ? <span className="field-note">Calculado del mapa — editable</span> : null}
       </label>
-      <label className="field">
+      <label className={fieldClass('terrain.usefulAreaHa')}>
         <FieldHint term={qdeGlossary.usefulAreaHa} />
         <input
           type="number"
           step="0.01"
           value={inputs.terrain.usefulAreaHa}
-          onChange={(e) => update('terrain', 'usefulAreaHa', Number(e.target.value))}
+          onChange={(e) => update('terrain', 'usefulAreaHa', numericValue(e.target.value))}
         />
         {terrainFromMap ? <span className="field-note">Calculado del mapa — editable</span> : null}
       </label>
-      <label className="field">
+      <label className={fieldClass('crop.species')}>
         <FieldHint term={qdeGlossary.species} />
         <input
           value={inputs.crop.species}
           onChange={(e) => update('crop', 'species', e.target.value)}
         />
       </label>
-      <label className="field">
+      <label className={fieldClass('crop.stage')}>
         <FieldHint term={qdeGlossary.stage} />
         <input value={inputs.crop.stage} onChange={(e) => update('crop', 'stage', e.target.value)} />
       </label>
-      <label className="field">
+      <label className={fieldClass('crop.canopyHeightM')}>
         <FieldHint term={qdeGlossary.canopyHeightM} />
         <input
           type="number"
           step="0.1"
           value={inputs.crop.canopyHeightM}
-          onChange={(e) => update('crop', 'canopyHeightM', Number(e.target.value))}
+          onChange={(e) => update('crop', 'canopyHeightM', numericValue(e.target.value))}
         />
       </label>
-      <label className="field">
+      <label className={fieldClass('crop.mission')}>
         <FieldHint term={qdeGlossary.mission} />
         <input
           value={inputs.crop.mission}
           onChange={(e) => update('crop', 'mission', e.target.value)}
         />
       </label>
-      <label className="field">
+      <label className={fieldClass('sprayProfile.ra')}>
         <FieldHint term={qdeGlossary.ra} />
         <input
           type="number"
@@ -84,12 +86,12 @@ export default function InputsForm({ inputs, onChange, terrainFromMap = false })
           onChange={(e) =>
             onChange({
               ...inputs,
-              sprayProfile: { ...inputs.sprayProfile, ra: Number(e.target.value) },
+              sprayProfile: { ...inputs.sprayProfile, ra: numericValue(e.target.value) },
             })
           }
         />
       </label>
-      <label className="field">
+      <label className={fieldClass('sprayProfile.fo')}>
         <FieldHint term={qdeGlossary.fo} />
         <input
           type="number"
@@ -98,12 +100,12 @@ export default function InputsForm({ inputs, onChange, terrainFromMap = false })
           onChange={(e) =>
             onChange({
               ...inputs,
-              sprayProfile: { ...inputs.sprayProfile, fo: Number(e.target.value) },
+              sprayProfile: { ...inputs.sprayProfile, fo: numericValue(e.target.value) },
             })
           }
         />
       </label>
-      <label className="field">
+      <label className={fieldClass('sprayProfile.pa')}>
         <FieldHint term={qdeGlossary.pa} />
         <input
           type="number"
@@ -112,12 +114,12 @@ export default function InputsForm({ inputs, onChange, terrainFromMap = false })
           onChange={(e) =>
             onChange({
               ...inputs,
-              sprayProfile: { ...inputs.sprayProfile, pa: Number(e.target.value) },
+              sprayProfile: { ...inputs.sprayProfile, pa: numericValue(e.target.value) },
             })
           }
         />
       </label>
-      <label className="field">
+      <label className={fieldClass('sprayProfile.qa')}>
         <FieldHint term={qdeGlossary.qa} />
         <input
           type="number"
@@ -126,12 +128,12 @@ export default function InputsForm({ inputs, onChange, terrainFromMap = false })
           onChange={(e) =>
             onChange({
               ...inputs,
-              sprayProfile: { ...inputs.sprayProfile, qa: Number(e.target.value) },
+              sprayProfile: { ...inputs.sprayProfile, qa: numericValue(e.target.value) },
             })
           }
         />
       </label>
-      <label className="field">
+      <label className={fieldClass('constraints.minCoveragePct')}>
         <FieldHint term={qdeGlossary.minCoveragePct} />
         <input
           type="number"
@@ -139,12 +141,12 @@ export default function InputsForm({ inputs, onChange, terrainFromMap = false })
           onChange={(e) =>
             onChange({
               ...inputs,
-              constraints: { ...inputs.constraints, minCoveragePct: Number(e.target.value) },
+              constraints: { ...inputs.constraints, minCoveragePct: numericValue(e.target.value) },
             })
           }
         />
       </label>
-      <label className="field">
+      <label className={fieldClass('constraints.maxSimultaneousHeads')}>
         <FieldHint term={qdeGlossary.maxSimultaneousHeads} />
         <input
           type="number"
@@ -154,13 +156,13 @@ export default function InputsForm({ inputs, onChange, terrainFromMap = false })
               ...inputs,
               constraints: {
                 ...inputs.constraints,
-                maxSimultaneousHeads: Number(e.target.value),
+                maxSimultaneousHeads: numericValue(e.target.value),
               },
             })
           }
         />
       </label>
-      <label className="field" style={{ gridColumn: '1 / -1' }}>
+      <label className={fieldClass('constraints.minTerminalPressureBar')} style={{ gridColumn: '1 / -1' }}>
         <FieldHint term={qdeGlossary.minTerminalPressureBar} />
         <input
           type="number"
@@ -171,7 +173,7 @@ export default function InputsForm({ inputs, onChange, terrainFromMap = false })
               ...inputs,
               constraints: {
                 ...inputs.constraints,
-                minTerminalPressureBar: Number(e.target.value),
+                minTerminalPressureBar: numericValue(e.target.value),
               },
             })
           }

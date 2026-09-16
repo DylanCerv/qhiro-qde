@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import L from 'leaflet';
 import { Circle, MapContainer, Marker, Polygon, Popup, Polyline, useMap } from 'react-leaflet';
 import { roleLabels } from '../data/glossary.js';
-import { formatCoordinates, polygonCentroid } from '../utils/geo.js';
+import { distanceMeters, formatCoordinates, polygonCentroid } from '../utils/geo.js';
 import { mergeEnergyConfig } from './EnergyConfigPanel.jsx';
 import {
   MapBaseLayers,
@@ -42,9 +42,10 @@ function FitAllBounds({ coords, nodes, fitKey }) {
   return null;
 }
 
-export default function DeploymentMap({ inputs, output }) {
+export default function DeploymentMap({ inputs, output, editable = false, onNodesChange }) {
   const [layerId, setLayerId] = useState('satellite');
   const [hillshade, setHillshade] = useState(true);
+  const [showNetwork, setShowNetwork] = useState(true);
   const [cursorPoint, setCursorPoint] = useState(null);
   const [fitKey, setFitKey] = useState(0);
 
@@ -65,6 +66,21 @@ export default function DeploymentMap({ inputs, output }) {
     return nodes
       .filter((node) => node.role === 'qdn')
       .map((node) => [nido.coordinates, node.coordinates]);
+  }, [nido, nodes]);
+
+  const networkLines = useMemo(() => {
+    if (!nido) return [];
+    const hubs = [nido, ...nodes.filter((node) => node.role === 'qdn')];
+    return nodes
+      .filter((node) => node.role === 'cabecilla' || node.role === 'peon')
+      .map((node) => {
+        const hub = hubs.reduce((nearest, candidate) => {
+          const fromCandidate = distanceMeters(candidate.coordinates, node.coordinates);
+          const fromNearest = distanceMeters(nearest.coordinates, node.coordinates);
+          return fromCandidate < fromNearest ? candidate : nearest;
+        });
+        return { node, hub };
+      });
   }, [nido, nodes]);
 
   useEffect(() => {
@@ -99,6 +115,16 @@ export default function DeploymentMap({ inputs, output }) {
             Huecos de cobertura ({gapPoints.length})
           </span>
         ) : null}
+        {nodes.length > 0 ? (
+          <label className="map-network-toggle">
+            <input
+              type="checkbox"
+              checked={showNetwork}
+              onChange={(event) => setShowNetwork(event.target.checked)}
+            />
+            Mostrar conexiones de red
+          </label>
+        ) : null}
       </div>
 
       <div className="map-wrap map-wrap-tall">
@@ -126,6 +152,22 @@ export default function DeploymentMap({ inputs, output }) {
               pathOptions={{ color: '#92ccff', weight: 2, opacity: 0.65, dashArray: '8 6' }}
             />
           ))}
+
+          {showNetwork ? networkLines.map(({ node, hub }) => (
+            <Polyline
+              key={`network-${node.nodeId}`}
+              positions={[
+                [hub.coordinates.lat, hub.coordinates.lng],
+                [node.coordinates.lat, node.coordinates.lng],
+              ]}
+              pathOptions={{
+                color: node.role === 'cabecilla' ? '#8b5cf6' : '#16a34a',
+                weight: 1.5,
+                opacity: 0.55,
+                dashArray: '4 5',
+              }}
+            />
+          )) : null}
 
           {gapPoints.map((point, index) => (
             <Circle
@@ -158,6 +200,17 @@ export default function DeploymentMap({ inputs, output }) {
               key={node.nodeId}
               position={[node.coordinates.lat, node.coordinates.lng]}
               icon={createRoleIcon(node.role)}
+              draggable={editable}
+              eventHandlers={editable ? {
+                dragend: (event) => {
+                  const { lat, lng } = event.target.getLatLng();
+                  onNodesChange?.(nodes.map((current) =>
+                    current.nodeId === node.nodeId
+                      ? { ...current, coordinates: { lat, lng }, placementReason: `${current.placementReason} Posición ajustada manualmente.` }
+                      : current,
+                  ));
+                },
+              } : undefined}
             >
               <Popup>
                 <div className="map-popup">

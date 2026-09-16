@@ -37,6 +37,7 @@ export const api = {
   getClients: () => request('/admin/clients'),
   getClientParcels: (userId) => request(`/admin/clients/${userId}/parcels`),
   getMontePlataPreset: () => request('/qde/presets/monte-plata'),
+  computePlan: (inputs) => request('/qde/compute', { method: 'POST', body: JSON.stringify(inputs) }),
   getProfiles: () => request('/qde/profiles'),
 
   getProjects: () => request('/qde/projects'),
@@ -75,6 +76,11 @@ export const api = {
   runVersion: (projectId, versionId) =>
     request(`/qde/projects/${projectId}/versions/${versionId}/run`, {
       method: 'POST',
+    }),
+  saveManualLayout: (projectId, versionId, output) =>
+    request(`/qde/projects/${projectId}/versions/${versionId}/output`, {
+      method: 'PUT',
+      body: JSON.stringify({ output }),
     }),
   selectVersion: (projectId, versionId) =>
     request(`/qde/projects/${projectId}/versions/${versionId}/select`, {

@@ -7,6 +7,7 @@ export default function Login() {
   const { login, error, setError } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({ email: '', password: '' });
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async (event) => {
@@ -71,13 +72,27 @@ export default function Login() {
             </label>
             <label className="field">
               <span>Contraseña</span>
-              <input
-                type="password"
-                placeholder="••••••••"
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
-                required
-              />
+              <div className="password-field">
+                <input
+                  type={passwordVisible ? 'text' : 'password'}
+                  placeholder="••••••••"
+                  value={form.password}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  required
+                />
+                <button
+                  type="button"
+                  className="password-field__toggle"
+                  onClick={() => setPasswordVisible((visible) => !visible)}
+                  aria-label={passwordVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  aria-pressed={passwordVisible}
+                  title={passwordVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                >
+                  <span className="material-symbols-outlined">
+                    {passwordVisible ? 'visibility_off' : 'visibility'}
+                  </span>
+                </button>
+              </div>
             </label>
             {error ? <div className="alert-error">{error}</div> : null}
             <button type="submit" className="btn btn-primary" disabled={submitting}>

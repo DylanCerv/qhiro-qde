@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import L from 'leaflet';
 import { MapContainer, Marker, Polygon, useMap, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -11,7 +11,6 @@ import {
 import {
   calculateUsefulAreaHa,
   formatCoordinates,
-  polygonCentroid,
   resolveUserLocation,
 } from '../utils/geo.js';
 
@@ -50,47 +49,40 @@ function MapRecenter({ center, points, recenterKey }) {
   const map = useMap();
 
   useEffect(() => {
+    // Nunca cambies el encuadre mientras el usuario dibuja. Solo el botón
+    // "Centrar" o "Ubicarme" incrementa recenterKey de forma explícita.
+    if (recenterKey === 0) return;
     if (points.length >= 3) {
       const bounds = L.latLngBounds(points.map((p) => [p.lat, p.lng]));
       map.fitBounds(bounds, { padding: [48, 48], maxZoom: 20 });
-      return;
-    }
-    if (center) {
+    } else if (center) {
       map.setView([center.lat, center.lng], 17);
     }
-  }, [recenterKey, center, map, points]);
+    // `points` y `center` no van en dependencias: el reencuadre es una acción
+    // puntual identificada por la llave, no una reacción a cada vértice nuevo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recenterKey, map]);
 
   return null;
 }
 
 export default function TerrainMapEditor({ points, onChange, defaultCenter }) {
   const [layerId, setLayerId] = useState('satellite');
-  const [hillshade, setHillshade] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(null);
   const [isMoving, setIsMoving] = useState(false);
   const [cursorPoint, setCursorPoint] = useState(null);
   const [recenterKey, setRecenterKey] = useState(0);
+  const [locating, setLocating] = useState(false);
   const [mapCenter, setMapCenter] = useState(defaultCenter ?? { lat: 18.807, lng: -69.784 });
-  const prevPointCount = useRef(points.length);
 
   useEffect(() => {
-    if (defaultCenter) {
-      setMapCenter(defaultCenter);
-      return;
-    }
-    if (points.length >= 1) {
-      setMapCenter(polygonCentroid(points) ?? points[0]);
-      return;
-    }
-    resolveUserLocation().then(setMapCenter);
-  }, [defaultCenter, points]);
-
-  useEffect(() => {
-    if (points.length >= 3 && prevPointCount.current < 3) {
-      setRecenterKey((key) => key + 1);
-    }
-    prevPointCount.current = points.length;
-  }, [points.length]);
+    // La vista pertenece al usuario. No derives el centro a partir de los
+    // vértices porque cada clic/arrastre terminaría desplazando el mapa.
+    if (!defaultCenter) resolveUserLocation().then(setMapCenter);
+    // Solo se establece al montar el editor; "Ubicarme" y "Centrar" son las
+    // únicas acciones que pueden mover la cámara deliberadamente.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const selectedPoint = selectedIndex !== null ? points[selectedIndex] : null;
   const grossHa = calculateUsefulAreaHa(points, 1);
@@ -144,6 +136,35 @@ export default function TerrainMapEditor({ points, onChange, defaultCenter }) {
     setIsMoving(true);
   };
 
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      const target = event.target;
+      const isEditingText =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        target?.isContentEditable;
+      if (isEditingText || selectedIndex === null || points.length <= 3) return;
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        event.preventDefault();
+        deleteSelected();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [points.length, selectedIndex]);
+
+  const locateUser = async () => {
+    setLocating(true);
+    try {
+      const location = await resolveUserLocation();
+      setMapCenter(location);
+      setRecenterKey((key) => key + 1);
+    } finally {
+      setLocating(false);
+    }
+  };
+
   return (
     <div className="map-editor">
       <div className="map-toolbar">
@@ -152,6 +173,10 @@ export default function TerrainMapEditor({ points, onChange, defaultCenter }) {
           mueve o elimina puntos. Usa zoom con rueda o pellizco.
         </p>
         <div className="map-toolbar-actions">
+          <button type="button" className="btn btn-secondary" onClick={locateUser} disabled={locating}>
+            <span className="material-symbols-outlined">my_location</span>
+            {locating ? 'Ubicando…' : 'Ubicarme'}
+          </button>
           <button type="button" className="btn btn-secondary" onClick={removeLastPoint} disabled={points.length === 0}>
             Deshacer último
           </button>
@@ -172,8 +197,6 @@ export default function TerrainMapEditor({ points, onChange, defaultCenter }) {
       <MapLayerControls
         layerId={layerId}
         onLayerChange={setLayerId}
-        hillshade={hillshade}
-        onHillshadeChange={setHillshade}
         canRecenter={points.length >= 1}
         onRecenter={() => setRecenterKey((key) => key + 1)}
       />
@@ -246,7 +269,7 @@ export default function TerrainMapEditor({ points, onChange, defaultCenter }) {
           scrollWheelZoom
           style={{ height: '100%', width: '100%' }}
         >
-          <MapBaseLayers layerId={layerId} hillshade={hillshade} />
+          <MapBaseLayers layerId={layerId} />
           <MapResizeFix />
           <MapRecenter center={mapCenter} points={points} recenterKey={recenterKey} />
           <MapCursorTracker onMove={setCursorPoint} />
@@ -256,7 +279,7 @@ export default function TerrainMapEditor({ points, onChange, defaultCenter }) {
               key={`point-${index}-${point.lat}-${point.lng}`}
               position={[point.lat, point.lng]}
               icon={pointIcons[index]}
-              draggable={isMoving && selectedIndex === index}
+              draggable
               eventHandlers={{
                 click: (event) => {
                   event.originalEvent.stopPropagation();
@@ -265,6 +288,7 @@ export default function TerrainMapEditor({ points, onChange, defaultCenter }) {
                 dragend: (event) => {
                   const { lat, lng } = event.target.getLatLng();
                   updatePoint(index, lat, lng);
+                  setSelectedIndex(index);
                   setIsMoving(false);
                 },
               }}

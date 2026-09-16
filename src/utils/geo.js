@@ -116,7 +116,7 @@ export function detectCountryCode() {
   return 'DO';
 }
 
-export async function resolveUserLocation(countryCode) {
+export async function resolveUserLocation(countryCode = detectCountryCode()) {
   const fallback = getCountryCenter(countryCode);
 
   if (!navigator.geolocation) {

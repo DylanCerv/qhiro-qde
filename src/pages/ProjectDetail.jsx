@@ -47,11 +47,17 @@ export default function ProjectDetail() {
   const [parcelId, setParcelId] = useState('');
   const [baseDefaults, setBaseDefaults] = useState(null);
   const [deviceEditEnabled, setDeviceEditEnabled] = useState(false);
+  const [draftOutput, setDraftOutput] = useState(undefined);
+  const [invalidFields, setInvalidFields] = useState([]);
+  const [manualLayout, setManualLayout] = useState(false);
+  const [manualNotice, setManualNotice] = useState(false);
+  const [terrainAccordionOpen, setTerrainAccordionOpen] = useState(true);
 
   const activeVersion = useMemo(
     () => versions.find((version) => version.versionId === activeVersionId) ?? null,
     [versions, activeVersionId],
   );
+  const draftStorageKey = `qde_project_draft_${projectId}`;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -64,24 +70,46 @@ export default function ProjectDetail() {
         api.getDefaultSettings(),
       ]);
       setProject(projectResponse.project);
-      setProjectName(projectResponse.project.name);
+      // "Nuevo plano" is only the server-side placeholder for a draft. It
+      // must never be prefilled into the title field the engineer edits.
+      setProjectName(projectResponse.project.name === 'Nuevo plano' ? '' : projectResponse.project.name);
       setClients(clientsResponse.clients ?? []);
       setBaseDefaults(defaultsResponse.defaults);
       const nextVersions = versionsResponse.versions ?? [];
       setVersions(nextVersions);
       setClientUserId(projectResponse.project.clientUserId ?? '');
       setParcelId(projectResponse.project.parcelId ?? '');
-      const latest = nextVersions[0];
-      if (latest) {
-        setActiveVersionId(latest.versionId);
-        setInputs(latest.inputs);
+      // Al reabrir, el plano calculado/aprobado es el resultado útil. Un borrador
+      // posterior permanece disponible en la lista, pero no debe ocultar el plano
+      // y sus nodos, mapa y presupuesto ya persistidos en Firestore.
+      const preferredVersion =
+        nextVersions.find((version) => version.status === 'selected') ??
+        nextVersions.find((version) => version.output) ??
+        nextVersions[0];
+      if (preferredVersion) {
+        setActiveVersionId(preferredVersion.versionId);
+        setInputs(preferredVersion.inputs);
+      }
+      setDraftOutput(undefined);
+      setManualLayout(false);
+      setManualNotice(false);
+      const cachedDraft = localStorage.getItem(draftStorageKey);
+      if (cachedDraft) {
+        try {
+          const draft = JSON.parse(cachedDraft);
+          if (draft.inputs) setInputs(draft.inputs);
+          if (draft.projectName) setProjectName(draft.projectName);
+          if (draft.output) setDraftOutput(draft.output);
+        } catch {
+          localStorage.removeItem(draftStorageKey);
+        }
       }
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, [projectId]);
+  }, [draftStorageKey, projectId]);
 
   useEffect(() => {
     load();
@@ -90,6 +118,8 @@ export default function ProjectDetail() {
   useEffect(() => {
     if (activeVersion) {
       setInputs(activeVersion.inputs);
+      setManualLayout(false);
+      setManualNotice(false);
       setDeviceEditEnabled(false);
     }
   }, [activeVersion]);
@@ -101,6 +131,11 @@ export default function ProjectDetail() {
     }
     api.getClientParcels(clientUserId).then((response) => setParcels(response.parcels ?? []));
   }, [clientUserId]);
+
+  useEffect(() => {
+    if (loading || !inputs) return;
+    localStorage.setItem(draftStorageKey, JSON.stringify({ projectName, inputs, output: draftOutput }));
+  }, [draftOutput, draftStorageKey, inputs, loading, projectName]);
 
   const saveProjectMeta = async () => {
     const response = await api.updateProject(projectId, {
@@ -116,16 +151,34 @@ export default function ProjectDetail() {
 
   const handleSaveInputs = async () => {
     if (!activeVersionId || !inputs) return;
+    if (!projectName.trim() || projectName.trim().toLowerCase() === 'nuevo plano') {
+      setError('Asigna un nombre al plano antes de guardarlo.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
       await saveProjectMeta();
       const response = await api.updateVersionInputs(projectId, activeVersionId, inputs);
+      let savedVersion = response.version;
+      if (manualLayout && draftOutput) {
+        const manual = await api.saveManualLayout(projectId, activeVersionId, draftOutput);
+        savedVersion = manual.version;
+      } else if (draftOutput) {
+        const computed = manualLayout
+          ? await api.saveManualLayout(projectId, activeVersionId, draftOutput)
+          : await api.runVersion(projectId, activeVersionId);
+        savedVersion = computed.version;
+      }
       setVersions((prev) =>
         prev.map((version) =>
-          version.versionId === activeVersionId ? response.version : version,
+          version.versionId === activeVersionId ? savedVersion : version,
         ),
       );
+      setDraftOutput(undefined);
+      setManualLayout(false);
+      setManualNotice(false);
+      localStorage.removeItem(draftStorageKey);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -159,21 +212,37 @@ export default function ProjectDetail() {
 
   const handleRun = async () => {
     if (!activeVersionId) return;
+    if (!projectName.trim() || projectName.trim().toLowerCase() === 'nuevo plano') {
+      setError('Asigna un nombre al plano antes de generarlo.');
+      return;
+    }
     if (!terrainReady) {
       setError('Delimita la parcela en el mapa (mínimo 3 vértices) antes de generar el plano.');
       return;
     }
+    const required = [
+      'terrain.name', 'terrain.grossAreaHa', 'terrain.usefulAreaHa', 'crop.species', 'crop.stage',
+      'crop.canopyHeightM', 'crop.mission', 'sprayProfile.ra', 'sprayProfile.fo',
+      'sprayProfile.pa', 'sprayProfile.qa', 'constraints.minCoveragePct',
+      'constraints.maxSimultaneousHeads', 'constraints.minTerminalPressureBar',
+    ];
+    const missing = required.filter((path) => {
+      const value = path.split('.').reduce((current, key) => current?.[key], inputs);
+      return value === '' || value === null || value === undefined || Number.isNaN(value);
+    });
+    if (missing.length > 0) {
+      setInvalidFields(missing);
+      setError('Completa los campos marcados en rojo antes de generar el plano.');
+      return;
+    }
+    setInvalidFields([]);
     setBusy(true);
     setError(null);
     try {
-      await saveProjectMeta();
-      if (inputs) await api.updateVersionInputs(projectId, activeVersionId, inputs);
-      const response = await api.runVersion(projectId, activeVersionId);
-      setVersions((prev) =>
-        prev.map((version) =>
-          version.versionId === activeVersionId ? response.version : version,
-        ),
-      );
+      const response = await api.computePlan(inputs);
+      setDraftOutput(response.output);
+      setManualLayout(false);
+      setManualNotice(false);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -211,8 +280,27 @@ export default function ProjectDetail() {
   const handleSelectPlan = async () => {
     if (!activeVersionId) return;
     setBusy(true);
+    setError(null);
     try {
-      const response = await api.selectVersion(projectId, activeVersionId);
+      // A generated draft lives locally until the engineer explicitly saves it.
+      // Approval must first persist/recompute that draft, otherwise the API only
+      // sees the previous empty version and correctly refuses to approve it.
+      let versionToApprove = activeVersionId;
+      if (draftOutput) {
+        await saveProjectMeta();
+        await api.updateVersionInputs(projectId, activeVersionId, inputs);
+        const computed = await api.runVersion(projectId, activeVersionId);
+        versionToApprove = computed.version.versionId;
+        setVersions((prev) =>
+          prev.map((version) =>
+            version.versionId === computed.version.versionId ? computed.version : version,
+          ),
+        );
+        setDraftOutput(undefined);
+        setManualLayout(false);
+        setManualNotice(false);
+      }
+      const response = await api.selectVersion(projectId, versionToApprove);
       setVersions((prev) =>
         prev.map((version) => {
           if (version.versionId === response.version.versionId) return response.version;
@@ -260,6 +348,19 @@ export default function ProjectDetail() {
 
   const terrainPoints = inputs?.terrain?.coordinates ?? [];
   const terrainReady = terrainPoints.length >= 3;
+  const dataComplete = Boolean(
+    inputs &&
+      [
+        'terrain.name', 'terrain.grossAreaHa', 'terrain.usefulAreaHa', 'crop.species', 'crop.stage',
+        'crop.canopyHeightM', 'crop.mission', 'sprayProfile.ra', 'sprayProfile.fo',
+        'sprayProfile.pa', 'sprayProfile.qa', 'constraints.minCoveragePct',
+        'constraints.maxSimultaneousHeads', 'constraints.minTerminalPressureBar',
+      ].every((path) => {
+        const value = path.split('.').reduce((current, key) => current?.[key], inputs);
+        return value !== '' && value !== null && value !== undefined && !Number.isNaN(value);
+      }),
+  );
+  const needsProjectName = !projectName.trim() || projectName.trim().toLowerCase() === 'nuevo plano';
   const terrainMapCenter = useMemo(() => {
     if (terrainPoints.length >= 1) return polygonCentroid(terrainPoints) ?? terrainPoints[0];
     return null;
@@ -275,7 +376,21 @@ export default function ProjectDetail() {
   }
   if (!project) return <div className="alert-error">Proyecto no encontrado.</div>;
 
-  const output = activeVersion?.output;
+  const output = draftOutput ?? activeVersion?.output;
+  const handleManualNodesChange = (deploymentNodes) => {
+    setDraftOutput((current) => ({
+      ...(current ?? activeVersion?.output),
+      deploymentNodes,
+    }));
+    setManualLayout(true);
+    setManualNotice(true);
+  };
+
+  const restoreCalculatedLayout = () => {
+    setDraftOutput(undefined);
+    setManualLayout(false);
+    setManualNotice(false);
+  };
 
   return (
     <div>
@@ -300,8 +415,8 @@ export default function ProjectDetail() {
               type="button"
               className="btn btn-primary"
               onClick={handleRun}
-              disabled={busy || !terrainReady}
-              title={!terrainReady ? 'Delimita la parcela en el mapa primero' : undefined}
+              disabled={busy || !terrainReady || needsProjectName}
+              title={needsProjectName ? 'Asigna un nombre al plano antes de generarlo' : !terrainReady ? 'Delimita la parcela en el mapa primero' : undefined}
             >
               <span className="material-symbols-outlined">architecture</span>
               {busy ? 'Calculando…' : 'Generar plano'}
@@ -314,6 +429,22 @@ export default function ProjectDetail() {
       {!terrainReady ? (
         <div className="alert-error" style={{ marginBottom: '1rem', background: 'rgba(243,204,84,0.1)', borderColor: 'rgba(243,204,84,0.35)', color: 'var(--yellow)' }}>
           Delimita la parcela en el mapa (mínimo 3 vértices) para poder generar el plano de despliegue.
+        </div>
+      ) : null}
+      {needsProjectName ? (
+        <div className="alert-error" style={{ marginBottom: '1rem' }}>
+          <span className="material-symbols-outlined">info</span>
+          Asigna un nombre al plano antes de calcular o guardar una versión.
+        </div>
+      ) : null}
+      {manualNotice ? (
+        <div className="manual-layout-alert">
+          <span className="material-symbols-outlined">edit_location_alt</span>
+          <div>
+            <strong>Plano ajustado manualmente.</strong> Las posiciones movidas se conservarán si guardas esta versión; revisa cobertura, presión y acceso antes de aprobarlo.
+          </div>
+          <button type="button" className="btn btn-secondary" onClick={restoreCalculatedLayout}>Volver al plano calculado</button>
+          <button type="button" className="btn btn-primary" onClick={() => setManualNotice(false)}>Mantener ajuste</button>
         </div>
       ) : null}
 
@@ -329,7 +460,10 @@ export default function ProjectDetail() {
                 key={version.versionId}
                 type="button"
                 className={`version-item${version.versionId === activeVersionId ? ' is-active' : ''}`}
-                onClick={() => setActiveVersionId(version.versionId)}
+                onClick={() => {
+                  setDraftOutput(undefined);
+                  setActiveVersionId(version.versionId);
+                }}
               >
                 <div className="version-item__title">
                   v{version.versionNumber} — {version.label}
@@ -340,7 +474,7 @@ export default function ProjectDetail() {
           </div>
         </aside>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        <div className="editor-workspace">
           <section className="card card--flat">
             <div className="card__label">
               <span className="material-symbols-outlined">badge</span>
@@ -405,42 +539,57 @@ export default function ProjectDetail() {
           </section>
 
           <section className="card card--flat">
-            <div className="section-head">
-              <div className="card__label" style={{ marginBottom: 0 }}>
+            <details
+              className="editor-accordion"
+              open={terrainAccordionOpen}
+              onToggle={(event) => setTerrainAccordionOpen(event.currentTarget.open)}
+            >
+              <summary>
                 <span className="material-symbols-outlined">draw</span>
-                Delimitar terreno en mapa
-              </div>
-              {!parcelId ? (
-                <span className="badge badge-feasible">Sin parcela — dibuja el lote</span>
-              ) : (
-                <span className="badge badge-draft">Editable — puedes ajustar vértices</span>
-              )}
-            </div>
-            <p className="result-summary" style={{ marginBottom: '1rem' }}>
-              Marca los vértices del terreno como en Symbiotic. El área bruta y útil se calculan
-              automáticamente y alimentan el motor de dimensionamiento.
-            </p>
-            {inputs ? (
-              <TerrainMapEditor
-                points={terrainPoints}
-                onChange={handleTerrainCoordinatesChange}
-                defaultCenter={terrainMapCenter}
-              />
-            ) : null}
+                <span>Delimitar terreno en mapa</span>
+                {terrainReady ? (
+                  <span className="editor-accordion__summary">{inputs?.terrain?.grossAreaHa} ha · {terrainPoints.length} vértices</span>
+                ) : (
+                  <span className="badge badge-feasible">Sin parcela — dibuja el lote</span>
+                )}
+                <span className="material-symbols-outlined editor-accordion__chevron">expand_more</span>
+              </summary>
+              <p className="result-summary" style={{ marginBottom: '1rem' }}>
+                Marca los vértices del terreno como en Symbiotic. El área bruta y útil se calculan
+                automáticamente y alimentan el motor de dimensionamiento.
+              </p>
+              {inputs ? (
+                <TerrainMapEditor
+                  points={terrainPoints}
+                  onChange={handleTerrainCoordinatesChange}
+                  defaultCenter={terrainMapCenter}
+                />
+              ) : null}
+            </details>
           </section>
 
           <section className="card card--flat">
-            <div className="section-head">
-              <div className="card__label" style={{ marginBottom: 0 }}>
+            <details className="editor-accordion" open={!dataComplete}>
+              <summary>
                 <span className="material-symbols-outlined">terrain</span>
-                Datos del terreno y misión
+                <span>Datos del terreno y misión</span>
+                {dataComplete ? <span className="editor-accordion__summary">Datos completos</span> : <span className="badge badge-draft">Pendiente</span>}
+                <span className="material-symbols-outlined editor-accordion__chevron">expand_more</span>
+              </summary>
+              <div className="section-head" style={{ marginTop: '1rem' }}>
+                <span className="result-summary">Edita los parámetros del terreno, cultivo y misión.</span>
+                <button type="button" className="btn btn-secondary" onClick={handleSaveInputs} disabled={busy}>
+                  <span className="material-symbols-outlined">save</span>
+                  Guardar
+                </button>
               </div>
-              <button type="button" className="btn btn-secondary" onClick={handleSaveInputs} disabled={busy}>
-                <span className="material-symbols-outlined">save</span>
-                Guardar
-              </button>
-            </div>
-            <InputsForm inputs={inputs} onChange={setInputs} terrainFromMap={terrainPoints.length >= 3} />
+              <InputsForm
+                inputs={inputs}
+                onChange={setInputs}
+                terrainFromMap={terrainPoints.length >= 3}
+                invalidFields={invalidFields}
+              />
+            </details>
           </section>
 
           <PlanDevicesPanel
@@ -455,7 +604,7 @@ export default function ProjectDetail() {
 
           {output ? (
             <>
-              <section className="card card--flat">
+              <section className="card card--flat editor-result-card">
                 <div className="card__label">
                   <span className="material-symbols-outlined">analytics</span>
                   Resultado del plano
@@ -557,7 +706,7 @@ export default function ProjectDetail() {
                 ) : null}
               </section>
 
-              <section className="card card--flat">
+              <section className="card card--flat editor-deployment-card">
                 <div className="section-head">
                   <div className="card__label" style={{ marginBottom: 0 }}>
                     <span className="material-symbols-outlined">map</span>
@@ -570,14 +719,22 @@ export default function ProjectDetail() {
                     versionLabel={`v${activeVersion?.versionNumber ?? 1} — ${activeVersion?.label ?? 'borrador'}`}
                   />
                 </div>
-                <DeploymentMap inputs={inputs} output={output} />
+                <DeploymentMap
+                  inputs={inputs}
+                  output={output}
+                  editable
+                  onNodesChange={handleManualNodesChange}
+                />
               </section>
 
-              <section className="card card--flat">
-                <div className="card__label">
+              <section className="card card--flat editor-trace-card">
+                <details className="trace-accordion">
+                  <summary>
                   <span className="material-symbols-outlined">timeline</span>
                   Trazabilidad — por qué salió así
-                </div>
+                    <span className="trace-accordion__count">{output.trace.length} pasos</span>
+                    <span className="material-symbols-outlined trace-accordion__chevron">expand_more</span>
+                  </summary>
                 <ol className="trace-list">
                   {output.trace.map((step) => (
                     <li key={step.step} className="trace-step">
@@ -589,6 +746,7 @@ export default function ProjectDetail() {
                     </li>
                   ))}
                 </ol>
+                </details>
               </section>
             </>
           ) : (
@@ -604,6 +762,7 @@ export default function ProjectDetail() {
           )}
         </div>
       </div>
+
     </div>
   );
 }

@@ -11,6 +11,9 @@ const defaultEnergy = {
   electricalLossPctPer100m: 2.5,
   pipePressureLossBarPer100m: 0.35,
   maxHydraulicReachM: 380,
+  maxSentinelsPerNido: 64,
+  maxCabecillasPerNido: 64,
+  maxPeonesPerNido: 64,
 };
 
 export function mergeEnergyConfig(energy, sprayRa = 12) {
@@ -59,6 +62,9 @@ export default function EnergyConfigPanel({ inputs, onChange, readOnly = false, 
     ['electricalLossPctPer100m', qdeGlossary.electricalLossPctPer100m],
     ['pipePressureLossBarPer100m', qdeGlossary.pipePressureLossBarPer100m],
     ['maxHydraulicReachM', qdeGlossary.maxHydraulicReachM],
+    ['maxSentinelsPerNido', qdeGlossary.maxSentinelsPerNido],
+    ['maxCabecillasPerNido', qdeGlossary.maxCabecillasPerNido],
+    ['maxPeonesPerNido', qdeGlossary.maxPeonesPerNido],
   ];
 
   const Wrapper = embedded ? 'div' : 'section';
@@ -85,7 +91,7 @@ export default function EnergyConfigPanel({ inputs, onChange, readOnly = false, 
         </p>
       ) : null}
 
-      <div className="form-grid form-grid--2">
+      <div className="form-grid form-grid--6">
         {fields.map(([key, term]) => (
           <label key={key} className="field">
             <FieldHint term={term} />

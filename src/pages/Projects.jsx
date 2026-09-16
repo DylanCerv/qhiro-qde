@@ -13,21 +13,81 @@ function statusBadge(status) {
   return <span className={`badge ${cls}`}>{label}</span>;
 }
 
+function withLocalDraftName(project) {
+  try {
+    const draft = JSON.parse(localStorage.getItem(`qde_project_draft_${project.projectId}`) ?? 'null');
+    const localName = draft?.projectName?.trim();
+    return localName && localName.toLowerCase() !== 'nuevo plano'
+      ? { ...project, name: localName, hasLocalDraft: true }
+      : project;
+  } catch {
+    return project;
+  }
+}
+
 export default function Projects() {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [selectedProjectIds, setSelectedProjectIds] = useState([]);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('all');
 
   useEffect(() => {
     api
       .getProjects()
-      .then((response) => setProjects(response.projects ?? []))
+      .then((response) => setProjects((response.projects ?? []).map(withLocalDraftName)))
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, []);
 
   const activeCount = projects.filter((p) => p.status === 'active').length;
   const draftCount = projects.filter((p) => p.status === 'draft').length;
+  const visibleProjects = statusFilter === 'all'
+    ? projects
+    : projects.filter((project) => project.status === statusFilter);
+  const selectedProjects = projects.filter((project) => selectedProjectIds.includes(project.projectId));
+  const allProjectsSelected = visibleProjects.length > 0 && visibleProjects.every((project) => selectedProjectIds.includes(project.projectId));
+
+  const toggleProject = (projectId) => {
+    setSelectedProjectIds((current) =>
+      current.includes(projectId)
+        ? current.filter((id) => id !== projectId)
+        : [...current, projectId],
+    );
+  };
+
+  const toggleAllProjects = () => {
+    setSelectedProjectIds((current) =>
+      allProjectsSelected
+        ? current.filter((id) => !visibleProjects.some((project) => project.projectId === id))
+        : [...new Set([...current, ...visibleProjects.map((project) => project.projectId)])],
+    );
+  };
+
+  const changeStatusFilter = (filter) => {
+    setStatusFilter(filter);
+    setSelectedProjectIds([]);
+  };
+
+  const deleteSelectedProjects = async () => {
+    if (selectedProjectIds.length === 0) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      await Promise.all(selectedProjectIds.map((projectId) => api.deleteProject(projectId)));
+      setProjects((current) =>
+        current.filter((project) => !selectedProjectIds.includes(project.projectId)),
+      );
+      setSelectedProjectIds([]);
+      setDeleteDialogOpen(false);
+    } catch (err) {
+      setError(`No se pudieron eliminar todos los planos: ${err.message}`);
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -45,10 +105,22 @@ export default function Projects() {
         title="Planos de despliegue"
         description="Biblioteca de diseños versionados con presupuesto, coordenadas y trazabilidad técnica."
         actions={
-          <Link to="/app/nuevo" className="btn btn-primary">
-            <span className="material-symbols-outlined">add</span>
-            Nuevo plano
-          </Link>
+          <>
+            {selectedProjectIds.length > 0 ? (
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={() => setDeleteDialogOpen(true)}
+              >
+                <span className="material-symbols-outlined">delete</span>
+                Eliminar {selectedProjectIds.length === 1 ? 'plano' : `${selectedProjectIds.length} planos`}
+              </button>
+            ) : null}
+            <Link to="/app/nuevo" className="btn btn-primary">
+              <span className="material-symbols-outlined">add</span>
+              Nuevo plano
+            </Link>
+          </>
         }
       />
 
@@ -70,6 +142,23 @@ export default function Projects() {
       </div>
 
       <div className="card card--flat">
+        <div className="project-filters" role="group" aria-label="Filtrar planos por estado">
+          {[
+            ['all', `Todos (${projects.length})`],
+            ['draft', `Borradores (${draftCount})`],
+            ['active', `Aprobados (${activeCount})`],
+          ].map(([filter, label]) => (
+            <button
+              key={filter}
+              type="button"
+              className={`btn ${statusFilter === filter ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => changeStatusFilter(filter)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         {projects.length === 0 ? (
           <div className="empty-state">
             <span className="material-symbols-outlined">map</span>
@@ -83,6 +172,14 @@ export default function Projects() {
             <table className="data-table">
               <thead>
                 <tr>
+                  <th className="selection-cell">
+                    <input
+                      type="checkbox"
+                      checked={allProjectsSelected}
+                      onChange={toggleAllProjects}
+                      aria-label="Seleccionar todos los planos"
+                    />
+                  </th>
                   <th>Plano</th>
                   <th>Cliente</th>
                   <th>Parcela</th>
@@ -92,8 +189,16 @@ export default function Projects() {
                 </tr>
               </thead>
               <tbody>
-                {projects.map((project) => (
+                {visibleProjects.map((project) => (
                   <tr key={project.projectId}>
+                    <td className="selection-cell">
+                      <input
+                        type="checkbox"
+                        checked={selectedProjectIds.includes(project.projectId)}
+                        onChange={() => toggleProject(project.projectId)}
+                        aria-label={`Seleccionar ${project.name}`}
+                      />
+                    </td>
                     <td>
                       <Link to={`/app/projects/${project.projectId}`} className="data-table__link">
                         {project.name}
@@ -108,9 +213,50 @@ export default function Projects() {
                 ))}
               </tbody>
             </table>
+            {visibleProjects.length === 0 ? (
+              <div className="empty-state project-filter-empty">
+                <span className="material-symbols-outlined">filter_alt_off</span>
+                <p>No hay planos en este estado.</p>
+              </div>
+            ) : null}
           </div>
         )}
       </div>
+
+      {deleteDialogOpen ? (
+        <div className="qde-modal-backdrop" role="presentation" onMouseDown={() => !deleting && setDeleteDialogOpen(false)}>
+          <section
+            className="qde-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-projects-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="qde-modal__icon" aria-hidden="true">
+              <span className="material-symbols-outlined">warning</span>
+            </div>
+            <h2 id="delete-projects-title">
+              {selectedProjects.length === 1 ? '¿Eliminar este plano?' : `¿Eliminar ${selectedProjects.length} planos?`}
+            </h2>
+            <p>
+              Esta acción elimina el plano y todas sus versiones, inputs, polígonos, resultados,
+              nodos de despliegue, presupuestos y trazabilidad. <strong>No se puede recuperar.</strong>
+            </p>
+            <ul className="qde-modal__list">
+              {selectedProjects.map((project) => <li key={project.projectId}>{project.name}</li>)}
+            </ul>
+            <div className="qde-modal__actions">
+              <button type="button" className="btn btn-secondary" onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>
+                Cancelar
+              </button>
+              <button type="button" className="btn btn-danger" onClick={deleteSelectedProjects} disabled={deleting}>
+                <span className="material-symbols-outlined">delete_forever</span>
+                {deleting ? 'Eliminando…' : 'Eliminar definitivamente'}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }

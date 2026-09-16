@@ -24,6 +24,9 @@ const energyFields = [
   ['electricalLossPctPer100m', qdeGlossary.electricalLossPctPer100m],
   ['pipePressureLossBarPer100m', qdeGlossary.pipePressureLossBarPer100m],
   ['maxHydraulicReachM', qdeGlossary.maxHydraulicReachM],
+  ['maxSentinelsPerNido', qdeGlossary.maxSentinelsPerNido],
+  ['maxCabecillasPerNido', qdeGlossary.maxCabecillasPerNido],
+  ['maxPeonesPerNido', qdeGlossary.maxPeonesPerNido],
 ];
 
 export default function BaseSettings() {

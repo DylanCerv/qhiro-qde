@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import QhiroLogo from './QhiroLogo';
 import { useAuth } from '../context/AuthContext';
@@ -27,12 +28,18 @@ const NAV = [
 export default function Layout() {
   const { profile, logout } = useAuth();
   const location = useLocation();
+  const [theme, setTheme] = useState(() => localStorage.getItem('qde_theme') ?? 'light');
   const initials = (profile?.displayName ?? profile?.email ?? 'Q')
     .split(' ')
     .map((part) => part[0])
     .join('')
     .slice(0, 2)
     .toUpperCase();
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem('qde_theme', theme);
+  }, [theme]);
 
   return (
     <div className="app-shell">
@@ -70,6 +77,16 @@ export default function Layout() {
 
       <div className="app-main">
         <header className="app-topbar">
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => setTheme((current) => (current === 'light' ? 'dark' : 'light'))}
+            aria-label={theme === 'light' ? 'Activar modo oscuro' : 'Activar modo claro'}
+            title={theme === 'light' ? 'Activar modo oscuro' : 'Activar modo claro'}
+          >
+            <span className="material-symbols-outlined">{theme === 'light' ? 'dark_mode' : 'light_mode'}</span>
+            {theme === 'light' ? 'Oscuro' : 'Claro'}
+          </button>
           <button type="button" className="btn btn-ghost" onClick={logout}>
             <span className="material-symbols-outlined">logout</span>
             Salir

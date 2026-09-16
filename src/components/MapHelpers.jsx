@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { TileLayer, useMap, useMapEvents } from 'react-leaflet';
-import { getMapTile, mapOverlays, mapTileList } from '../utils/geo.js';
+import { getMapTile, mapTileList } from '../utils/geo.js';
 
 export function MapResizeFix() {
   const map = useMap();
@@ -33,7 +33,7 @@ export function MapCursorTracker({ onMove }) {
   return null;
 }
 
-export function MapBaseLayers({ layerId, hillshade = false }) {
+export function MapBaseLayers({ layerId }) {
   const base = getMapTile(layerId);
 
   return (
@@ -45,16 +45,6 @@ export function MapBaseLayers({ layerId, hillshade = false }) {
         maxNativeZoom={base.maxZoom}
         maxZoom={22}
       />
-      {hillshade ? (
-        <TileLayer
-          key="overlay-hillshade"
-          url={mapOverlays.hillshade.url}
-          attribution={mapOverlays.hillshade.attribution}
-          maxNativeZoom={mapOverlays.hillshade.maxZoom}
-          maxZoom={22}
-          opacity={mapOverlays.hillshade.opacity}
-        />
-      ) : null}
     </>
   );
 }
@@ -62,8 +52,6 @@ export function MapBaseLayers({ layerId, hillshade = false }) {
 export function MapLayerControls({
   layerId,
   onLayerChange,
-  hillshade,
-  onHillshadeChange,
   onRecenter,
   canRecenter = false,
 }) {
@@ -80,14 +68,6 @@ export function MapLayerControls({
             </option>
           ))}
         </select>
-      </label>
-      <label className="map-layer-controls__toggle">
-        <input
-          type="checkbox"
-          checked={hillshade}
-          onChange={(e) => onHillshadeChange(e.target.checked)}
-        />
-        <span>Sombras relieve</span>
       </label>
       {canRecenter ? (
         <button type="button" className="btn btn-secondary" onClick={onRecenter}>

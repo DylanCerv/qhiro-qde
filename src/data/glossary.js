@@ -115,6 +115,18 @@ export const qdeGlossary = {
     label: 'Alcance hidráulico máximo (m)',
     help: 'Distancia máxima de tubería antes de requerir un QDN de refuerzo.',
   },
+  maxSentinelsPerNido: {
+    label: 'Máx. Centinelas por Nido',
+    help: 'Límite total de Cabecillas y Peones que el único Nido del proyecto puede alimentar y coordinar.',
+  },
+  maxCabecillasPerNido: {
+    label: 'Máx. Cabecillas por Nido',
+    help: 'Límite de Centinelas con percepción avanzada que puede atender el Nido.',
+  },
+  maxPeonesPerNido: {
+    label: 'Máx. Peones por Nido',
+    help: 'Límite de Centinelas de ejecución que puede atender el Nido.',
+  },
 };
 
 export const roleLabels = {

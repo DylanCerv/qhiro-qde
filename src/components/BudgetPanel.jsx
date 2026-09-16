@@ -64,7 +64,7 @@ export default function BudgetPanel({
         </p>
       ) : null}
 
-      <div className="form-grid form-grid--2" style={{ marginTop: readOnly ? 0 : '1rem' }}>
+      <div className="form-grid form-grid--6" style={{ marginTop: readOnly ? 0 : '1rem' }}>
         {costFields.map(([key, term]) => (
           <label key={key} className="field">
             <FieldHint term={term} />
